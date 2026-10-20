@@ -23,6 +23,7 @@ fast as playback.
 
 | Audio | Speed |
 |---|---|
+| 29 kHz, stereo | 2.48x |
 | 48 kHz, stereo | 1.70x |
 | Vocal and instrumental, 44.1 kHz, stereo (two CPU cores) | 1.33x |
 
@@ -101,6 +102,7 @@ See [LICENSE](LICENSE).
 
 | 音声 | 速度 |
 |---|---|
+| 29 kHz、ステレオ | 2.48x |
 | 48 kHz、ステレオ | 1.70x |
 | ボーカルとインスト、44.1 kHz、ステレオ（2 つの CPU コア） | 1.33x |
 
