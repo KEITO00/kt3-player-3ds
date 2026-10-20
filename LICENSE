@@ -1,0 +1,59 @@
+KT3 Player for 3DS
+Copyright (c) 2026 keitodaze
+
+The files in this repository are licensed under the MIT License (see the end of this
+file), except for the following:
+
+- icon.png, the icon of KT3 Player. All rights reserved. Do not use it in other software.
+- the files in the vendor/ctru-rs folder, a copy of ctru-rs. They are licensed under the
+  zlib license (see vendor/ctru-rs/LICENSE).
+
+This license does not cover:
+
+- the KT3 Player and KT3 Creator applications for Windows and the web, which have their
+  own terms;
+- the name "KT3 Player". Please do not use it in a way that suggests your software is
+  official or made by keitodaze.
+
+------------------------------------------------------------------------------------
+
+KT3 Player for 3DS
+Copyright (c) 2026 keitodaze
+
+このリポジトリのファイルは、MIT ライセンスで公開しています（このファイルの最後を参照してください）。
+ただし、次のものを除きます。
+
+- icon.png（KT3 Player のアイコン）。すべての権利を keitodaze が保有します。他のソフトウェアには
+  使用しないでください。
+- vendor/ctru-rs フォルダのファイル（ctru-rs のコピー）。zlib ライセンスに従います
+  （vendor/ctru-rs/LICENSE を参照してください）。
+
+次のものは、このライセンスの対象外です。
+
+- Windows 版と Web 版の KT3 Player、KT3 Creator（それぞれの利用規約に従います）
+- 「KT3 Player」という名前。あなたのソフトウェアが公式である、または keitodaze が作成した、
+  と誤解されるような使い方はしないでください。
+
+------------------------------------------------------------------------------------
+
+MIT License
+
+Copyright (c) 2026 keitodaze
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
