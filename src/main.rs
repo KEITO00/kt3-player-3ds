@@ -26,6 +26,7 @@ const BUDGET: Duration = Duration::from_millis(30);
 const UI_EVERY: Duration = Duration::from_millis(250);
 const THUMB_DELAY: Duration = Duration::from_millis(180);
 const CHUNK_SAMPLES: usize = ktc::format::CHUNK * M;
+const AHEAD_FRAMES: usize = 32;
 
 struct Buffer(Vec<i16, LinearAllocator>);
 
@@ -131,6 +132,8 @@ struct Player<'a> {
     gain: f32,
     looped: (usize, usize),
     stream: ktc::Stream<'a>,
+    ahead: Option<&'a Ahead<'a>>,
+    synth: ktc::Synth<'a>,
     next_start: isize,
     block: Vec<Vec<f32>>,
     chans: usize,
@@ -147,7 +150,7 @@ struct Player<'a> {
 }
 
 impl<'a> Player<'a> {
-    fn new(ktc: &'a [u8], info: &'a ktc::Info, gain: f32, looped: (usize, usize)) -> Self {
+    fn new(ktc: &'a [u8], info: &'a ktc::Info, gain: f32, looped: (usize, usize), ahead: Option<&'a Ahead<'a>>) -> Self {
         let chans = info.chans;
         let (ls, le) = looped;
         Player {
@@ -156,6 +159,8 @@ impl<'a> Player<'a> {
             gain,
             looped,
             stream: ktc::Stream::new(ktc, info),
+            ahead,
+            synth: ktc::Synth::from_chunk(info, 0),
             next_start: -(M as isize),
             block: vec![vec![0.0; M]; chans],
             chans,
@@ -173,7 +178,13 @@ impl<'a> Player<'a> {
     }
 
     fn restart(&mut self, c: usize) {
-        self.stream = ktc::Stream::from_chunk(self.ktc, self.info, c);
+        match self.ahead {
+            Some(a) => {
+                a.restart(c);
+                self.synth = ktc::Synth::from_chunk(self.info, c);
+            }
+            None => self.stream = ktc::Stream::from_chunk(self.ktc, self.info, c),
+        }
         self.next_start = (c * CHUNK_SAMPLES) as isize - M as isize;
     }
 
@@ -218,7 +229,10 @@ impl<'a> Player<'a> {
             self.restart(self.pos / CHUNK_SAMPLES);
         }
         let t0 = Instant::now();
-        let got = self.stream.next(&mut self.block)?;
+        let got = match self.ahead {
+            Some(a) => a.next(&mut self.synth, &mut self.block)?,
+            None => self.stream.next(&mut self.block)?,
+        };
         self.decode_time += t0.elapsed();
         let Some(start) = got else {
             self.pos = end;
@@ -307,7 +321,7 @@ impl<'a> Second<'a> {
             self.finished.store(true, Ordering::Release);
             return;
         }
-        let mut p = Player::new(self.ktc, &self.info, self.gain, self.looped);
+        let mut p = Player::new(self.ktc, &self.info, self.gain, self.looped, None);
         while !self.stop.load(Ordering::Relaxed) {
             p.looping = self.looping.load(Ordering::Relaxed);
             let have = self.ring.lock().unwrap().len();
@@ -326,6 +340,114 @@ impl<'a> Second<'a> {
             }
             self.decoded.store(p.decoded, Ordering::Relaxed);
             self.decode_us.store(p.decode_time.as_micros() as usize, Ordering::Relaxed);
+        }
+    }
+}
+
+struct AheadState {
+    era: u32,
+    chunk: usize,
+    queue: VecDeque<Vec<ktc::coding::Frame>>,
+    done: bool,
+    error: Option<String>,
+}
+
+struct Ahead<'a> {
+    ktc: &'a [u8],
+    info: &'a ktc::Info,
+    state: Mutex<AheadState>,
+    stop: AtomicBool,
+}
+
+impl<'a> Ahead<'a> {
+    fn new(ktc: &'a [u8], info: &'a ktc::Info) -> Self {
+        Ahead { ktc, info, state: Mutex::new(AheadState { era: 0, chunk: 0, queue: VecDeque::new(), done: false, error: None }), stop: AtomicBool::new(false) }
+    }
+
+    fn restart(&self, c: usize) {
+        let mut st = self.state.lock().unwrap();
+        st.era = st.era.wrapping_add(1);
+        st.chunk = c;
+        st.queue.clear();
+        st.done = false;
+    }
+
+    fn next(&self, synth: &mut ktc::Synth<'a>, out: &mut [Vec<f32>]) -> Result<Option<isize>, String> {
+        loop {
+            let mut st = self.state.lock().unwrap();
+            if let Some(e) = st.error.take() {
+                return Err(e);
+            }
+            if let Some(f) = st.queue.pop_front() {
+                drop(st);
+                return Ok(Some(synth.next(&f, out)));
+            }
+            if st.done {
+                return Ok(None);
+            }
+            drop(st);
+            unsafe { ctru_sys::svcSleepThread(100_000) };
+        }
+    }
+
+    fn run(&self) {
+        let mut era = u32::MAX;
+        let mut reader = ktc::Reader::from_chunk(self.ktc, self.info, 0);
+        while !self.stop.load(Ordering::Relaxed) {
+            {
+                let st = self.state.lock().unwrap();
+                if st.era != era {
+                    era = st.era;
+                    reader = ktc::Reader::from_chunk(self.ktc, self.info, st.chunk);
+                }
+                if st.done || st.queue.len() >= AHEAD_FRAMES {
+                    drop(st);
+                    unsafe { ctru_sys::svcSleepThread(1_000_000) };
+                    continue;
+                }
+            }
+            let mut frames = Vec::new();
+            let r = reader.next(&mut frames);
+            let mut st = self.state.lock().unwrap();
+            if st.era != era {
+                continue;
+            }
+            match r {
+                Ok(true) => st.queue.push_back(frames),
+                Ok(false) => st.done = true,
+                Err(e) => {
+                    st.error = Some(e);
+                    st.done = true;
+                }
+            }
+        }
+    }
+}
+
+unsafe extern "C" fn ahead_main(arg: *mut std::ffi::c_void) {
+    let a = unsafe { &*(arg as *const Ahead) };
+    a.run();
+}
+
+struct AheadThread<'s, 'a>(ctru_sys::Thread, &'s Ahead<'a>, Core1);
+
+impl<'s, 'a> AheadThread<'s, 'a> {
+    fn start(a: &'s Ahead<'a>) -> Result<Self, String> {
+        let core = Core1::claim()?;
+        let t = unsafe { ctru_sys::threadCreate(Some(ahead_main), a as *const Ahead as *mut std::ffi::c_void, 256 * 1024, 0x30, 1, false) };
+        if t.is_null() {
+            return Err("Cannot start a thread on the second CPU core".into());
+        }
+        Ok(AheadThread(t, a, core))
+    }
+}
+
+impl Drop for AheadThread<'_, '_> {
+    fn drop(&mut self) {
+        self.1.stop.store(true, Ordering::Relaxed);
+        unsafe {
+            let _ = ctru_sys::threadJoin(self.0, u64::MAX);
+            ctru_sys::threadFree(self.0);
         }
     }
 }
@@ -640,7 +762,12 @@ fn play(apt: &mut Apt, hid: &mut Hid, gfx: &Gfx, ui: &mut Ui, ndsp: &Ndsp, lid: 
     ch.set_mix(&AudioMix::default());
 
     let lead = (LEAD_SECS * sr as f64) as usize;
-    let mut p = Player::new(&song.ktc, &info, song.gain, song.looped);
+    let ahead = song.second.is_none().then(|| Ahead::new(&song.ktc, &info));
+    let _ahead_thread = match &ahead {
+        Some(a) => Some(AheadThread::start(a)?),
+        None => None,
+    };
+    let mut p = Player::new(&song.ktc, &info, song.gain, song.looped, ahead.as_ref());
     let second = match &song.second {
         Some((k, g)) => Some(Second::new(k, *g, song.looped, lead, false)?),
         None => None,
@@ -752,11 +879,17 @@ fn bench(apt: &Apt, hid: &mut Hid, gfx: &Gfx, ui: &mut Ui, song: &Song) -> Resul
         Some((k, g)) => Some(Second::new(k, *g, song.looped, 0, true)?),
         None => None,
     };
+    let ahead = song.second.is_none().then(|| Ahead::new(&song.ktc, &info));
     let mut s = ktc::Stream::new(&song.ktc, &info);
+    let mut synth = ktc::Synth::from_chunk(&info, 0);
     let mut block = vec![vec![0.0f32; M]; info.chans];
     let t0 = Instant::now();
     let thread = match &second {
         Some(s) => Some(SecondThread::start(s)?),
+        None => None,
+    };
+    let ahead_thread = match &ahead {
+        Some(a) => Some(AheadThread::start(a)?),
         None => None,
     };
     let audio_total = info.len as f64 / info.sr as f64;
@@ -765,7 +898,11 @@ fn bench(apt: &Apt, hid: &mut Hid, gfx: &Gfx, ui: &mut Ui, song: &Song) -> Resul
     let mut done = false;
     loop {
         if !done {
-            done = s.next(&mut block)?.is_none();
+            done = match &ahead {
+                Some(a) => a.next(&mut synth, &mut block)?,
+                None => s.next(&mut block)?,
+            }
+            .is_none();
             if !done {
                 frames += 1;
             }
@@ -795,6 +932,7 @@ fn bench(apt: &Apt, hid: &mut Hid, gfx: &Gfx, ui: &mut Ui, song: &Song) -> Resul
         }
     }
     let t = t0.elapsed().as_secs_f64();
+    drop(ahead_thread);
     drop(thread);
     if let Some(e) = second.as_ref().and_then(|s| s.error.lock().unwrap().take()) {
         return Err(e);

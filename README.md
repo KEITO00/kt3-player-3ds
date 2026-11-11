@@ -13,19 +13,22 @@ itself with the reference implementation of [ktc](https://github.com/KEITO00/ktc
 - Shows the thumbnail, title and artist
   - Japanese text is shown with the system font.
 - Plays files with separate vocal and instrumental tracks
-  - Each track is decoded on its own CPU core.
+- Decodes the audio on two CPU cores
+  - For files with one track, the second core reads the coded data ahead, and the first core restores the audio.
+  - For files with vocal and instrumental tracks, each track is decoded on its own core.
 - Keeps playing with the lid closed while headphones are connected
 
 ### Speed on Old 3DS
 
-The values were measured with the speed test (`Y`). 1.00x means that decoding is exactly as
-fast as playback.
+The values are the decoding speed shown while a song is playing. 1.00x means that decoding is
+exactly as fast as playback.
 
 | Audio | Speed |
 |---|---|
-| 29 kHz, stereo | 2.48x |
-| 48 kHz, stereo | 1.70x |
-| Vocal and instrumental, 44.1 kHz, stereo (two CPU cores) | 1.33x |
+| 29 kHz, stereo | 2.76x |
+| 48 kHz, stereo | 1.75x |
+
+- Most of the songs that were tried were decoded at about 2x.
 
 ### Requirements
 
@@ -93,18 +96,21 @@ See [LICENSE](LICENSE).
 - サムネイル、曲名、アーティスト名の表示
   - 日本語は、本体のフォントで表示します。
 - ボーカルとインストが分かれたファイルの再生
-  - それぞれを別の CPU コアで復元します。
+- 2 つの CPU コアを使用した復元
+  - 音声が 1 つのファイルは、2 つ目のコアが符号化されたデータを先に読み取り、1 つ目のコアが音声を復元します。
+  - ボーカルとインストが分かれたファイルは、それぞれを別のコアで復元します。
 - イヤホンの接続中の、ふたを閉じた状態での再生
 
 ### Old 3DS での速度
 
-速度テスト（`Y`）で測定した値です。1.00x は、復元の速度が再生の速度と同じであることを表します。
+再生中に表示される、復元の速度の値です。1.00x は、復元の速度が再生の速度と同じであることを表します。
 
 | 音声 | 速度 |
 |---|---|
-| 29 kHz、ステレオ | 2.48x |
-| 48 kHz、ステレオ | 1.70x |
-| ボーカルとインスト、44.1 kHz、ステレオ（2 つの CPU コア） | 1.33x |
+| 29 kHz、ステレオ | 2.76x |
+| 48 kHz、ステレオ | 1.75x |
+
+- 試した曲の多くは、約 2x で復元できました。
 
 ### 必要なもの
 
